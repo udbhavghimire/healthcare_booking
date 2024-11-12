@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Book Appointment</title>
+    <style>
+      .conversation-container {
+        margin: 20px auto;
+        padding: 20px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        width: 80%;
+        max-width: 600px;
+        height: 400px;
+        overflow-y: auto;
+        background: #f8f9fa;
+      }
+      .message {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 8px;
+        max-width: 80%;
+      }
+      .user-message {
+        background: #e3f2fd;
+        color: #1565c0;
+        margin-left: auto;
+      }
+      .system-message {
+        background: #e8f5e9;
+        color: #2e7d32;
+      }
+      #startButton {
+        display: block;
+        margin: 20px auto;
+        padding: 12px 24px;
+        font-size: 16px;
+        background: #4caf50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      #startButton:hover {
+        background: #45a049;
+      }
+      .status-indicator {
+        text-align: center;
+        color: #666;
+        font-style: italic;
+      }
+      .button-container {
+        text-align: center;
+        margin: 20px auto;
+      }
+
+      #toggleButton {
+        padding: 12px 24px;
+        font-size: 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+
+      #toggleButton.start {
+        background: #4caf50;
+        color: white;
+      }
+
+      #toggleButton.stop {
+        background: #f44336;
+        color: white;
+      }
+
+      #toggleButton.start:hover {
+        background: #45a049;
+      }
+
+      #toggleButton.stop:hover {
+        background: #da190b;
+      }
+
+      #toggleButton:disabled {
+        background: #cccccc !important;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+  <body>
+    <h1 style="text-align: center">Book an Appointment</h1>
+
+    <div class="conversation-container" id="conversationBox">
+      <!-- Messages will appear here -->
+    </div>
+
+    <div class="status-indicator" id="statusIndicator"></div>
+
+    <div class="button-container">
+      <button id="toggleButton">Start Voice Booking</button>
+    </div>
+
+    <script>
+      let recognition;
+      const conversationBox = document.getElementById("conversationBox");
+      const statusIndicator = document.getElementById("statusIndicator");
+      const toggleButton = document.getElementById("toggleButton");
+
+      if ("webkitSpeechRecognition" in window) {
+        recognition = new webkitSpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = "en-US";
+
+        recognition.onstart = () => {
+          statusIndicator.textContent = "Listening...";
+        };
+
+        recognition.onresult = async (event) => {
+          if (recognition.stopped) return;
+
+          let interimTranscript = "";
+          let finalTranscript = "";
+
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+
+            if (event.results[i].isFinal) {
+              finalTranscript = transcript;
+              addMessage(finalTranscript, true);
+              await processVoiceInput(finalTranscript);
+            } else {
+              interimTranscript = transcript;
+              statusIndicator.textContent = `Listening: ${interimTranscript}`;
+            }
+          }
+        };
+
+        recognition.onend = () => {
+          if (
+            !recognition.stopped &&
+            toggleButton.textContent === "Stop Voice Booking"
+          ) {
+            recognition.start();
+          } else {
+            statusIndicator.textContent = "";
+          }
+        };
+
+        recognition.onerror = (event) => {
+          console.error("Recognition error:", event.error);
+          statusIndicator.textContent = "Error occurred. Please try again.";
+        };
+      }
+
+      function addMessage(text, isUser) {
+        const messageDiv = document.createElement("div");
+        messageDiv.className = `message ${
+          isUser ? "user-message" : "system-message"
+        }`;
+        messageDiv.textContent = text;
+        conversationBox.appendChild(messageDiv);
+        conversationBox.scrollTop = conversationBox.scrollHeight;
+      }
+
+      async function processVoiceInput(text) {
+        try {
+          const response = await fetch("", {
+            method: "POST",
+            headers: {
+              "X-CSRFToken": "{{ csrf_token }}",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ text: text }),
+          });
+
+          const data = await response.json();
+          addMessage(data.message, false);
+
+          if (data.status === "completed" || data.status === "stopped") {
+            stopBooking();
+            return;
+          }
+
+          return data;
+        } catch (error) {
+          console.error("Error:", error);
+          const errorMessage =
+            "Sorry, there was an error processing your request.";
+          addMessage(errorMessage, false);
+        }
+      }
+
+      // Toggle button handler
+      toggleButton.addEventListener("click", async (e) => {
+        e.preventDefault();
+
+        if (toggleButton.textContent === "Start Voice Booking") {
+          // Start booking process
+          conversationBox.innerHTML = "";
+
+          try {
+            const response = await fetch("", {
+              method: "POST",
+              headers: {
+                "X-CSRFToken": "{{ csrf_token }}",
+              },
+            });
+
+            const data = await response.json();
+            addMessage(data.message, false);
+
+            // Start recognition after a short delay
+            setTimeout(() => {
+              if (recognition) {
+                recognition.stopped = false;
+                recognition.start();
+              }
+            }, 2000);
+
+            // Update button
+            toggleButton.textContent = "Stop Voice Booking";
+            toggleButton.classList.remove("start");
+            toggleButton.classList.add("stop");
+          } catch (error) {
+            console.error("Error:", error);
+            addMessage("Sorry, there was an error starting the conversation.");
+          }
+        } else {
+          await stopBooking();
+        }
+      });
+
+      async function stopBooking() {
+        // Stop speech recognition
+        if (recognition) {
+          recognition.stopped = true;
+          recognition.stop();
+        }
+
+        // Send stop request to server
+        try {
+          const response = await fetch("", {
+            method: "POST",
+            headers: {
+              "X-CSRFToken": "{{ csrf_token }}",
+              "X-Action": "stop",
+            },
+          });
+
+          const data = await response.json();
+          addMessage(data.message, false);
+
+          // Update button without restarting the conversation
+          toggleButton.textContent = "Start Voice Booking";
+          toggleButton.classList.remove("stop");
+          toggleButton.classList.add("start");
+        } catch (error) {
+          console.error("Error:", error);
+          addMessage("Sorry, there was an error stopping the conversation.");
+        }
+      }
+    </script>
+  </body>
+</html>
