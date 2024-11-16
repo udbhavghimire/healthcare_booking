@@ -3,264 +3,421 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content="{{ csrf_token }}" />
+    <link rel="icon" href="data:," />
     <title>Book Appointment</title>
     <style>
-      .conversation-container {
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
         margin: 20px auto;
-        padding: 20px;
-        border: 1px solid #ccc;
-        border-radius: 8px;
-        width: 80%;
-        max-width: 600px;
-        height: 400px;
-        overflow-y: auto;
-        background: #f8f9fa;
-      }
-      .message {
-        margin: 10px 0;
-        padding: 10px;
-        border-radius: 8px;
-        max-width: 80%;
-      }
-      .user-message {
-        background: #e3f2fd;
-        color: #1565c0;
-        margin-left: auto;
-      }
-      .system-message {
-        background: #e8f5e9;
-        color: #2e7d32;
-      }
-      #startButton {
-        display: block;
-        margin: 20px auto;
-        padding: 12px 24px;
-        font-size: 16px;
-        background: #4caf50;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-      }
-      #startButton:hover {
-        background: #45a049;
-      }
-      .status-indicator {
-        text-align: center;
-        color: #666;
-        font-style: italic;
-      }
-      .button-container {
-        text-align: center;
-        margin: 20px auto;
+        padding: 0 20px;
       }
 
-      #toggleButton {
-        padding: 12px 24px;
+      #chat-container {
+        height: 400px;
+        overflow-y: auto;
+        margin-bottom: 20px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        padding: 15px;
+        background-color: #f9f9f9;
+      }
+
+      .message {
+        margin: 10px 0;
+        padding: 10px 15px;
+        border-radius: 10px;
+        max-width: 80%;
+        word-wrap: break-word;
+      }
+
+      .user {
+        background-color: #e3f2fd;
+        color: #1565c0;
+        margin-left: auto;
+        border-bottom-right-radius: 5px;
+      }
+
+      .system {
+        background-color: #f1f8e9;
+        color: #2e7d32;
+        margin-right: auto;
+        border-bottom-left-radius: 5px;
+      }
+
+      .timestamp {
+        font-size: 0.8em;
+        color: #666;
+        margin-top: 5px;
+        text-align: right;
+      }
+
+      #status {
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 5px;
+        background-color: #fff3e0;
+        color: #e65100;
+        font-weight: bold;
+      }
+
+      #booking-button {
+        padding: 10px 20px;
         font-size: 16px;
         border: none;
-        border-radius: 4px;
+        border-radius: 5px;
+        background-color: #4caf50;
+        color: white;
         cursor: pointer;
         transition: background-color 0.3s;
       }
 
-      #toggleButton.start {
-        background: #4caf50;
-        color: white;
+      #booking-button:hover {
+        background-color: #45a049;
       }
 
-      #toggleButton.stop {
-        background: #f44336;
-        color: white;
+      .listening {
+        color: #2196f3;
+        font-style: italic;
       }
 
-      #toggleButton.start:hover {
-        background: #45a049;
+      .speech-status {
+        font-size: 0.9em;
+        color: #666;
+        margin-top: 3px;
+        font-style: italic;
       }
 
-      #toggleButton.stop:hover {
-        background: #da190b;
-      }
-
-      #toggleButton:disabled {
-        background: #cccccc !important;
-        cursor: not-allowed;
+      .message-wrapper {
+        margin: 15px 0;
       }
     </style>
   </head>
   <body>
-    <h1 style="text-align: center">Book an Appointment</h1>
-
-    <div class="conversation-container" id="conversationBox">
-      <!-- Messages will appear here -->
-    </div>
-
-    <div class="status-indicator" id="statusIndicator"></div>
-
-    <div class="button-container">
-      <button id="toggleButton">Start Voice Booking</button>
-    </div>
+    <div id="chat-container"></div>
+    <div id="status"></div>
+    <button id="booking-button">Start Booking</button>
 
     <script>
-      let recognition;
-      const conversationBox = document.getElementById("conversationBox");
-      const statusIndicator = document.getElementById("statusIndicator");
-      const toggleButton = document.getElementById("toggleButton");
+      let isBookingActive = false;
+      let recognition = null;
+      let isSystemSpeaking = false;
+      const bookingButton = document.getElementById("booking-button");
+      const chatContainer = document.getElementById("chat-container");
+      const statusDiv = document.getElementById("status");
+      const BOOKING_URL = window.location.pathname;
 
-      if ("webkitSpeechRecognition" in window) {
-        recognition = new webkitSpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = "en-US";
-
-        recognition.onstart = () => {
-          statusIndicator.textContent = "Listening...";
-        };
-
-        recognition.onresult = async (event) => {
-          if (recognition.stopped) return;
-
-          let interimTranscript = "";
-          let finalTranscript = "";
-
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            const transcript = event.results[i][0].transcript;
-
-            if (event.results[i].isFinal) {
-              finalTranscript = transcript;
-              addMessage(finalTranscript, true);
-              await processVoiceInput(finalTranscript);
-            } else {
-              interimTranscript = transcript;
-              statusIndicator.textContent = `Listening: ${interimTranscript}`;
-            }
-          }
-        };
-
-        recognition.onend = () => {
-          if (
-            !recognition.stopped &&
-            toggleButton.textContent === "Stop Voice Booking"
-          ) {
-            recognition.start();
-          } else {
-            statusIndicator.textContent = "";
-          }
-        };
-
-        recognition.onerror = (event) => {
-          console.error("Recognition error:", event.error);
-          statusIndicator.textContent = "Error occurred. Please try again.";
-        };
-      }
-
-      function addMessage(text, isUser) {
-        const messageDiv = document.createElement("div");
-        messageDiv.className = `message ${
-          isUser ? "user-message" : "system-message"
-        }`;
-        messageDiv.textContent = text;
-        conversationBox.appendChild(messageDiv);
-        conversationBox.scrollTop = conversationBox.scrollHeight;
-      }
-
-      async function processVoiceInput(text) {
+      async function checkServerConnection() {
         try {
-          const response = await fetch("", {
+          console.log("Checking server connection...");
+          const csrfToken = document.querySelector(
+            'meta[name="csrf-token"]'
+          ).content;
+          console.log("CSRF Token:", csrfToken);
+          console.log("Using URL:", BOOKING_URL);
+
+          const response = await fetch(BOOKING_URL, {
             method: "POST",
             headers: {
-              "X-CSRFToken": "{{ csrf_token }}",
               "Content-Type": "application/json",
+              "X-CSRFToken": csrfToken,
+              Accept: "application/json",
             },
-            body: JSON.stringify({ text: text }),
+            credentials: "include",
+            body: JSON.stringify({
+              type: "ping",
+            }),
           });
 
-          const data = await response.json();
-          addMessage(data.message, false);
-
-          if (data.status === "completed" || data.status === "stopped") {
-            stopBooking();
-            return;
+          if (!response.ok) {
+            console.error("Server returned error status:", response.status);
+            const text = await response.text();
+            console.error("Response text:", text);
+            return false;
           }
 
-          return data;
-        } catch (error) {
-          console.error("Error:", error);
-          const errorMessage =
-            "Sorry, there was an error processing your request.";
-          addMessage(errorMessage, false);
+          const contentType = response.headers.get("content-type");
+          if (!contentType || !contentType.includes("application/json")) {
+            console.error("Invalid content type:", contentType);
+            return false;
+          }
+
+          const data = await response.json();
+          console.log("Server response data:", data);
+          return data.status === "success";
+        } catch (err) {
+          console.error("Server check failed:", err);
+          return false;
         }
       }
 
-      // Toggle button handler
-      toggleButton.addEventListener("click", async (e) => {
-        e.preventDefault();
+      function playAudio(base64Audio) {
+        if (!base64Audio) {
+          console.error("No audio data received");
+          handleAudioEnd();
+          return;
+        }
 
-        if (toggleButton.textContent === "Start Voice Booking") {
-          // Start booking process
-          conversationBox.innerHTML = "";
+        try {
+          // Stop recognition while system is speaking
+          if (recognition) {
+            recognition.stop();
+            statusDiv.textContent = "System speaking...";
+            console.log("Recognition stopped for system speech");
+          }
 
-          try {
-            const response = await fetch("", {
-              method: "POST",
-              headers: {
-                "X-CSRFToken": "{{ csrf_token }}",
-              },
+          isSystemSpeaking = true;
+          const audio = new Audio(`data:audio/mp3;base64,${base64Audio}`);
+
+          audio.addEventListener("ended", () => {
+            console.log("Audio finished playing");
+            handleAudioEnd();
+          });
+
+          audio.addEventListener("error", (error) => {
+            console.error("Audio playback error:", error);
+            handleAudioEnd();
+          });
+
+          // Add small delay before playing
+          setTimeout(() => {
+            audio.play().catch((error) => {
+              console.error("Error playing audio:", error);
+              handleAudioEnd();
             });
+          }, 500);
+        } catch (error) {
+          console.error("Error in playAudio:", error);
+          handleAudioEnd();
+        }
+      }
 
-            const data = await response.json();
-            addMessage(data.message, false);
+      function handleAudioEnd() {
+        console.log("Handling audio end");
+        isSystemSpeaking = false;
 
-            // Start recognition after a short delay
-            setTimeout(() => {
-              if (recognition) {
-                recognition.stopped = false;
+        // Short delay before restarting recognition
+        setTimeout(() => {
+          if (isBookingActive) {
+            try {
+              recognition.start();
+              statusDiv.textContent = "Listening...";
+              statusDiv.classList.add("listening");
+              console.log("Recognition restarted after system speech");
+            } catch (error) {
+              console.error("Error restarting recognition:", error);
+              // Try to reinitialize recognition if it failed
+              if (initializeSpeechRecognition()) {
                 recognition.start();
               }
-            }, 2000);
-
-            // Update button
-            toggleButton.textContent = "Stop Voice Booking";
-            toggleButton.classList.remove("start");
-            toggleButton.classList.add("stop");
-          } catch (error) {
-            console.error("Error:", error);
-            addMessage("Sorry, there was an error starting the conversation.");
+            }
           }
-        } else {
-          await stopBooking();
-        }
-      });
+        }, 1000);
+      }
 
-      async function stopBooking() {
-        // Stop speech recognition
-        if (recognition) {
-          recognition.stopped = true;
-          recognition.stop();
-        }
+      function addMessage(text, type, audioData) {
+        const wrapper = document.createElement("div");
+        wrapper.classList.add("message-wrapper");
 
-        // Send stop request to server
-        try {
-          const response = await fetch("", {
-            method: "POST",
-            headers: {
-              "X-CSRFToken": "{{ csrf_token }}",
-              "X-Action": "stop",
-            },
-          });
+        const messageDiv = document.createElement("div");
+        messageDiv.classList.add("message", type);
+        messageDiv.textContent = text;
 
-          const data = await response.json();
-          addMessage(data.message, false);
+        const timestampDiv = document.createElement("div");
+        timestampDiv.classList.add("timestamp");
+        timestampDiv.textContent = new Date().toLocaleTimeString();
 
-          // Update button without restarting the conversation
-          toggleButton.textContent = "Start Voice Booking";
-          toggleButton.classList.remove("stop");
-          toggleButton.classList.add("start");
-        } catch (error) {
-          console.error("Error:", error);
-          addMessage("Sorry, there was an error stopping the conversation.");
+        wrapper.appendChild(messageDiv);
+        wrapper.appendChild(timestampDiv);
+
+        chatContainer.appendChild(wrapper);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+
+        if (type === "system" && audioData) {
+          playAudio(audioData);
         }
       }
+
+      function initializeSpeechRecognition() {
+        try {
+          window.SpeechRecognition =
+            window.SpeechRecognition || window.webkitSpeechRecognition;
+          recognition = new SpeechRecognition();
+          recognition.continuous = false;
+          recognition.interimResults = false;
+          recognition.lang = "en-US";
+
+          recognition.onstart = function () {
+            console.log("Recognition started");
+            statusDiv.textContent = "Listening...";
+            statusDiv.classList.add("listening");
+          };
+
+          recognition.onend = function () {
+            console.log("Recognition ended");
+            statusDiv.classList.remove("listening");
+            if (isBookingActive && !isSystemSpeaking) {
+              console.log("Restarting recognition");
+              recognition.start();
+            }
+          };
+
+          recognition.onresult = function (event) {
+            const text = event.results[0][0].transcript;
+            console.log("Recognized text:", text);
+            addMessage(text, "user");
+            sendToServer(text);
+          };
+
+          recognition.onerror = function (event) {
+            console.error("Recognition error:", event.error);
+            if (event.error === "no-speech") {
+              // Restart recognition on no-speech error
+              recognition.start();
+            }
+          };
+
+          return true;
+        } catch (error) {
+          console.error("Error initializing speech recognition:", error);
+          return false;
+        }
+      }
+
+      async function startBooking() {
+        try {
+          statusDiv.textContent = "Checking server connection...";
+          console.log("Starting booking process...");
+
+          const serverAvailable = await checkServerConnection();
+          if (!serverAvailable) {
+            throw new Error("Cannot connect to server. Please try again.");
+          }
+
+          console.log("Server connection successful");
+          statusDiv.textContent = "Checking microphone...";
+
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              audio: true,
+            });
+            stream.getTracks().forEach((track) => track.stop());
+          } catch (error) {
+            console.error("Microphone check failed:", error);
+            throw new Error(
+              "Could not access microphone. Please check permissions."
+            );
+          }
+
+          if (!recognition) {
+            if (!initializeSpeechRecognition()) {
+              throw new Error("Speech recognition not available");
+            }
+          }
+
+          isBookingActive = true;
+          bookingButton.textContent = "End Booking";
+          statusDiv.textContent = "Connected to server...";
+
+          // Send greeting
+          const response = await fetch(BOOKING_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')
+                .content,
+              Accept: "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({
+              type: "greeting",
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Server error: ${response.status}`);
+          }
+
+          const data = await response.json();
+          console.log("Greeting response:", data);
+
+          if (data.status === "success") {
+            chatContainer.innerHTML = "";
+            addMessage(data.message, "system", data.audio);
+            statusDiv.textContent = "System speaking...";
+          } else {
+            throw new Error(data.message || "Server returned error status");
+          }
+        } catch (error) {
+          console.error("Error in startBooking:", error);
+          endBooking();
+          statusDiv.textContent = "Error: " + error.message;
+          alert("Could not start booking session. Please try again.");
+        }
+      }
+
+      function endBooking() {
+        isBookingActive = false;
+        isSystemSpeaking = false;
+        if (recognition) {
+          recognition.stop();
+        }
+        bookingButton.textContent = "Start Booking";
+        addMessage("Booking session ended", "system");
+      }
+
+      async function sendToServer(text) {
+        if (isSystemSpeaking) {
+          console.log("Ignored server send while system was speaking");
+          return;
+        }
+
+        try {
+          statusDiv.textContent = "Processing...";
+          const response = await fetch(BOOKING_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')
+                .content,
+              Accept: "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({
+              text: text,
+              type: "voice_input",
+            }),
+          });
+
+          console.log("Server response status:", response.status);
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error("Server error response:", errorText);
+            throw new Error(`Server error: ${response.status}`);
+          }
+
+          const data = await response.json();
+          if (data.status === "success") {
+            addMessage(data.message, "system", data.audio);
+          } else {
+            throw new Error(data.message || "Server returned error status");
+          }
+        } catch (error) {
+          console.error("Server error:", error);
+          addMessage("Error communicating with server", "system");
+          statusDiv.textContent = "Error: " + error.message;
+        }
+      }
+
+      bookingButton.addEventListener("click", function () {
+        if (!isBookingActive) {
+          startBooking();
+        } else {
+          endBooking();
+        }
+      });
     </script>
   </body>
 </html>

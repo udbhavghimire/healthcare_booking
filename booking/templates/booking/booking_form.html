@@ -1,0 +1,35 @@
+{% if show_confirmation %}
+    <div class="confirmation-box">
+        <h3>Please confirm your booking details:</h3>
+        <p>Name: {{ name }}</p>
+        <p>Date: {{ date }}</p>
+        <p>Time: {{ time }}</p>
+        
+        <form method="POST">
+            {% csrf_token %}
+            <input type="hidden" name="name" value="{{ name }}">
+            <input type="hidden" name="date" value="{{ date }}">
+            <input type="hidden" name="time" value="{{ time }}">
+            <button type="submit" name="confirm_booking" value="1">Confirm Booking</button>
+            <button type="button" onclick="window.history.back()">Cancel</button>
+        </form>
+    </div>
+{% else %}
+    <!-- Your existing booking form here -->
+    <form method="POST">
+        {% csrf_token %}
+        <!-- Your form fields -->
+        <input type="text" name="name" required>
+        <input type="date" name="date" required>
+        <input type="time" name="time" required>
+        <button type="submit">Book Appointment</button>
+    </form>
+{% endif %}
+
+{% if messages %}
+    <div class="messages">
+        {% for message in messages %}
+            <div{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</div>
+        {% endfor %}
+    </div>
+{% endif %} 
